@@ -1,5 +1,9 @@
 # 实现自定义tensorrt插件
 
+## 环境
+* CUDA: 11.6
+* TENSORRT: TensorRT-8.6.1.6
+
 ## 构建
 ```bash
 mkdir build
