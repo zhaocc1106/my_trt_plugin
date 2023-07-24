@@ -1,9 +1,15 @@
 #include "mat_mul_plugin.h"
 
-#include <cublas_v2.h>
-
 #include <iostream>
 #include <memory>
+
+#include "mat_mul.h"
+
+#define USE_CUBLAS 0
+
+#if USE_CUBLAS
+#include <cublas_v2.h>
+#endif
 
 namespace zcc {
 namespace plugin {
@@ -92,8 +98,12 @@ int MatMulPluginDynamic::enqueue(const nvinfer1::PluginTensorDesc* inputDesc,
   std::cout << "MatMulPluginDynamic enqueue." << std::endl;
   const auto& input1_dims = inputDesc[0].dims;
   const auto& input2_dims = inputDesc[1].dims;
-  const auto& output_dims = outputDesc[0].dims;
 
+  const float* input1 = static_cast<const float*>(inputs[0]);
+  const float* input2 = static_cast<const float*>(inputs[1]);
+  float* output = static_cast<float*>(outputs[0]);
+
+#if USE_CUBLAS // Use cublas to calc.
   const int m = input1_dims.d[0];
   const int k = input1_dims.d[1];
   const int n = input2_dims.d[1];
@@ -104,64 +114,58 @@ int MatMulPluginDynamic::enqueue(const nvinfer1::PluginTensorDesc* inputDesc,
   const float beta = 0.0f;
   // std::cout << "m: " << m << ", k: " << k << ", n: " << n << ", lda: " << lda << ", ldb: " << ldb << ", ldc: " << ldc
   //           << ", alpha: " << alpha << ", beta: " << beta << std::endl;
-
-  const float* input1 = static_cast<const float*>(inputs[0]);
-  const float* input2 = static_cast<const float*>(inputs[1]);
-  float* output = static_cast<float*>(outputs[0]);
-
   cublasHandle_t cublas_handle;
   cublasCreate(&cublas_handle);
-
   // 由于cublasSgemm的参数是按照列优先的，host端传入的inp1和inp2是按行优先存储的，则传入cublasSgemm的参数相当于是inp1的转置和inp2的转置
   // 则最终计算结果需要计算出output ^ T，转为host端后则是output转置的转置，即output
   // 所以实际传入参数顺序应为inp2转置，inp1转置，output转置
-  cublasSgemm(cublas_handle,
-              CUBLAS_OP_N,
-              CUBLAS_OP_N,
-              n,
-              m,
-              k,
-              &alpha,
-              input2,
-              ldb,
-              input1,
-              lda,
-              &beta,
-              output,
-              ldc);
+  cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &alpha, input2, ldb, input1, lda, &beta, output, ldc);
+#else // Use my matmul kernel to calc.
+  const int m = input1_dims.d[0];
+  const int k = input1_dims.d[1];
+  const int n = input2_dims.d[1];
+  Matrix input1_matrix = {k, m, const_cast<float*>(input1)};
+  Matrix input2_matrix = {n, k, const_cast<float*>(input2)};
+  Matrix output_matrix = {n, m, output};
+  MatInnerProdInGpu(input1_matrix, input2_matrix, output_matrix, stream);
+#endif
 
+#if 0
   // print input1 and input2
-  // float* input1_host = new float[m * k];
-  // float* input2_host = new float[k * n];
-  // cudaMemcpy(input1_host, input1, sizeof(float) * m * k, cudaMemcpyDeviceToHost);
-  // cudaMemcpy(input2_host, input2, sizeof(float) * k * n, cudaMemcpyDeviceToHost);
-  // std::cout << "input1_host: " << std::endl;
-  // for (int i = 0; i < m; ++i) {
-  //   for (int j = 0; j < k; ++j) {
-  //     std::cout << input1_host[i * k + j] << " ";
-  //   }
-  //   std::cout << std::endl;
-  // }
-  // std::cout << "input2_host: " << std::endl;
-  // for (int i = 0; i < k; ++i) {
-  //   for (int j = 0; j < n; ++j) {
-  //     std::cout << input2_host[i * n + j] << " ";
-  //   }
-  //   std::cout << std::endl;
-  // }
+  float* input1_host = new float[m * k];
+  float* input2_host = new float[k * n];
+  cudaMemcpy(input1_host, input1, sizeof(float) * m * k, cudaMemcpyDeviceToHost);
+  cudaMemcpy(input2_host, input2, sizeof(float) * k * n, cudaMemcpyDeviceToHost);
+  std::cout << "input1_host: " << std::endl;
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < k; ++j) {
+      std::cout << input1_host[i * k + j] << " ";
+    }
+    std::cout << std::endl;
+  }
+  std::cout << "input2_host: " << std::endl;
+  for (int i = 0; i < k; ++i) {
+    for (int j = 0; j < n; ++j) {
+      std::cout << input2_host[i * n + j] << " ";
+    }
+    std::cout << std::endl;
+  }
 
   // print output
-  // float* output_host = new float[m * n];
-  // cudaMemcpy(output_host, output, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
-  // std::cout << "output_host: " << std::endl;
-  // for (int i = 0; i < m; ++i) {
-  //   for (int j = 0; j < n; ++j) {
-  //     std::cout << output_host[i * n + j] << " ";
-  //   }
-  //   std::cout << std::endl;
-  // }
+  float* output_host = new float[m * n];
+  cudaMemcpy(output_host, output, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
+  std::cout << "output_host: " << std::endl;
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < n; ++j) {
+      std::cout << output_host[i * n + j] << " ";
+    }
+    std::cout << std::endl;
+  }
+#endif
 
+#if USE_CUBLAS
   cublasDestroy(cublas_handle);
+#endif
   return 0;
 }
 
