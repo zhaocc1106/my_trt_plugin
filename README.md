@@ -1,4 +1,4 @@
-# 实现自定义tensorrt插件
+# 实现自己的tensorrt算子插件
 
 ## 环境
 * CUDA: 11.6
