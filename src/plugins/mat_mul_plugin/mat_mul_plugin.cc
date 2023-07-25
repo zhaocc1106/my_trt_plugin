@@ -6,9 +6,14 @@
 #include "mat_mul.h"
 
 #define USE_CUBLAS 0
+#define USE_CUBLASLT 1
 
 #if USE_CUBLAS
 #include <cublas_v2.h>
+#endif
+
+#if USE_CUBLASLT
+#include <cublasLt.h>
 #endif
 
 namespace zcc {
@@ -116,10 +121,43 @@ int MatMulPluginDynamic::enqueue(const nvinfer1::PluginTensorDesc* inputDesc,
   //           << ", alpha: " << alpha << ", beta: " << beta << std::endl;
   cublasHandle_t cublas_handle;
   cublasCreate(&cublas_handle);
+  cublasSetStream(cublas_handle, stream);
+
   // 由于cublasSgemm的参数是按照列优先的，host端传入的inp1和inp2是按行优先存储的，则传入cublasSgemm的参数相当于是inp1的转置和inp2的转置
   // 则最终计算结果需要计算出output ^ T，转为host端后则是output转置的转置，即output
   // 所以实际传入参数顺序应为inp2转置，inp1转置，output转置
-  cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &alpha, input2, ldb, input1, lda, &beta, output, ldc);
+  cublasSgemmEx(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &alpha, input2, CUDA_R_32F, ldb, input1, CUDA_R_32F,
+                lda, &beta, output, CUDA_R_32F, ldc);
+  cublasDestroy(cublas_handle);
+#elif USE_CUBLASLT
+  const int m = input1_dims.d[0];
+  const int k = input1_dims.d[1];
+  const int n = input2_dims.d[1];
+  const int lda = k;
+  const int ldb = n;
+  const int ldc = n;
+  const float alpha = 1.0f;
+  const float beta = 0.0f;
+  cublasLtHandle_t cublaslt_handle;
+  cublasLtCreate(&cublaslt_handle);
+  cublasLtMatmulDesc_t matmul_desc;
+  cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
+  cublasLtMatrixLayout_t input1_desc, input2_desc, output_desc;
+  cublasLtMatrixLayoutCreate(&input1_desc, CUDA_R_32F, k, m, lda);
+  cublasLtMatrixLayoutCreate(&input2_desc, CUDA_R_32F, n, k, ldb);
+  cublasLtMatrixLayoutCreate(&output_desc, CUDA_R_32F, n, m, ldc);
+
+  auto status = cublasLtMatmul(cublaslt_handle, matmul_desc, &alpha, input2, input2_desc, input1, input1_desc, &beta,
+                               output, output_desc, output, output_desc, nullptr, workspace, 0, stream);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    std::cout << "cublasLtMatmul failed, status: " << status << std::endl;
+  }
+
+  cublasLtMatrixLayoutDestroy(input1_desc);
+  cublasLtMatrixLayoutDestroy(input2_desc);
+  cublasLtMatrixLayoutDestroy(output_desc);
+  cublasLtMatmulDescDestroy(matmul_desc);
+  cublasLtDestroy(cublaslt_handle);
 #else // Use my matmul kernel to calc.
   const int m = input1_dims.d[0];
   const int k = input1_dims.d[1];
@@ -161,10 +199,6 @@ int MatMulPluginDynamic::enqueue(const nvinfer1::PluginTensorDesc* inputDesc,
     }
     std::cout << std::endl;
   }
-#endif
-
-#if USE_CUBLAS
-  cublasDestroy(cublas_handle);
 #endif
   return 0;
 }
