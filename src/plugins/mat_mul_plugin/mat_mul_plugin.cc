@@ -3,17 +3,15 @@
 #include <iostream>
 #include <memory>
 
-#include "mat_mul.h"
-
 #define USE_CUBLAS 0
 #define USE_CUBLASLT 1
 
 #if USE_CUBLAS
 #include <cublas_v2.h>
-#endif
-
-#if USE_CUBLASLT
+#elif USE_CUBLASLT
 #include <cublasLt.h>
+#else
+#include "mat_mul.h"
 #endif
 
 namespace zcc {
