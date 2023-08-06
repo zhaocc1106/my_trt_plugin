@@ -21,6 +21,7 @@ _OPSET_VERSION = 11
 
 def _reg(symbolic_fn: typing.Callable):
     name = "::%s" % symbolic_fn.__name__
+    print('registering op: {}'.format(name))
     torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
 
@@ -32,7 +33,7 @@ def register_ops():
 
     def matmul(g, input, other):
         return g.op(
-            "com.microsoft::MatMulPluginDynamic",
+            "zcc::MatMulPluginDynamic",
             input,
             other,
         )
