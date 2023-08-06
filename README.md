@@ -18,5 +18,7 @@ make install
 ```bash
 cd test
 # 生成trt engine并对比trt算子结果与torch算子结果
-python3 my_mat_mul_trt.py
+python3 torch_matmul_to_trt.py
+# 生成trt engine并对比trt算子结果与tf算子结果
+python3 tf_matmul_to_trt.py
 ```

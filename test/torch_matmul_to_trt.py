@@ -33,7 +33,7 @@ def register_ops():
 
     def matmul(g, input, other):
         return g.op(
-            "zcc::MatMulPluginDynamic",
+            "zcc::MatMul",
             input,
             other,
         )
