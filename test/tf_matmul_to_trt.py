@@ -41,7 +41,7 @@ if __name__ == '__main__':
     print('Model exported to ' + model_onnx_path)
     model_onnx = onnx.load(model_onnx_path)
 
-    # 修改算子的属性来匹配tensorrt的算子插件，包括算子名、命名空间和版本
+    # 修改onnx算子节点的属性来匹配tensorrt的算子插件，包括算子名、命名空间和版本
     matmul_node = model_onnx.graph.node[0]
     matmul_node.op_type = 'MatMulDynamicPlugin'  # 修改算子名
     version_attr = onnx.helper.make_attribute("plugin_version", "1")
