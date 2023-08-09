@@ -19,7 +19,7 @@ namespace plugin {
 
 namespace {
 static const char* PLUGIN_VERSION{"1"};
-static const char* PLUGIN_NAME{"MatMul"};
+static const char* PLUGIN_NAME{"MatMulDynamicPlugin"};
 } // namespace
 
 MatMulPluginDynamic::MatMulPluginDynamic(const std::string& name) : PluginDynamicBase(name) {

@@ -6,7 +6,7 @@ import pycuda.driver as cuda
 import tensorrt as trt
 import tensorflow as tf
 import tf2onnx
-from onnx import helper
+import onnx
 
 # called to init pyCUDA
 import pycuda.autoinit
@@ -39,6 +39,20 @@ if __name__ == '__main__':
                                                        tf.TensorSpec(shape=[None, None], dtype=tf.float32)],
                                opset=12, output_path=model_onnx_path, custom_ops={'MatMul': _TENSORFLOW_DOMAIN})
     print('Model exported to ' + model_onnx_path)
+    model_onnx = onnx.load(model_onnx_path)
+
+    # 修改算子的属性来匹配tensorrt的算子插件，包括算子名、命名空间和版本
+    matmul_node = model_onnx.graph.node[0]
+    matmul_node.op_type = 'MatMulDynamicPlugin'  # 修改算子名
+    version_attr = onnx.helper.make_attribute("plugin_version", "1")
+    namespace_attr = onnx.helper.make_attribute("plugin_namespace", "zcc")
+    matmul_node.attribute.append(version_attr)  # 添加版本属性
+    matmul_node.attribute.append(namespace_attr)  # 添加命名空间属性
+
+    # 保存修改后的onnx模型
+    onnx.save(model_onnx, model_onnx_path)
+    model_onnx = onnx.load(model_onnx_path)
+    print('Onnx model: {}'.format(model_onnx))
 
     # 转换成TRT
     cmd = 'trtexec --onnx={} --saveEngine={} ' \

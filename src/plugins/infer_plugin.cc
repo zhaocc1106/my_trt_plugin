@@ -8,7 +8,10 @@
 template <typename T>
 class PluginRegistrarExt : public nvinfer1::PluginRegistrar<T> {
 public:
-  PluginRegistrarExt(const char* pluginNamespace) { getPluginRegistry()->registerCreator(instance, pluginNamespace); }
+  PluginRegistrarExt(const char* pluginNamespace) {
+    instance.setPluginNamespace(pluginNamespace);
+    getPluginRegistry()->registerCreator(instance, pluginNamespace);
+  }
 
 private:
   //! Plugin instance.
